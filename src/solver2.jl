@@ -46,9 +46,8 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
     a = tree.a_labels[best_node]
 
     new_node = false
+    sp, o, r = @gen(:sp, :o, :r)(pomcp.problem, s, a, sol.rng)
     if tree.n_a_children[best_node] <= sol.k_observation*(tree.n[best_node]^sol.alpha_observation)
-
-        sp, o, r = @gen(:sp, :o, :r)(pomcp.problem, s, a, sol.rng)
 
         if sol.check_repeat_obs && haskey(tree.a_child_lookup, (best_node,o))
             hao = tree.a_child_lookup[(best_node, o)]
@@ -70,7 +69,7 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
         push!(tree.generated[best_node], o=>hao)
     else
 
-        sp, r = @gen(:sp, :r)(pomcp.problem, s, a, sol.rng)
+        # sp, r = @gen(:sp, :r)(pomcp.problem, s, a, sol.rng)
 
     end
 
@@ -79,11 +78,18 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
     end
 
     if new_node
+        # println("esitmate value: ", estimate_value(pomcp.solved_estimate, pomcp.problem, sp, POWTreeObsNode(tree, hao), d-1))
         R = r + POMDPs.discount(pomcp.problem)*estimate_value(pomcp.solved_estimate, pomcp.problem, sp, POWTreeObsNode(tree, hao), d-1)
     else
-        pair = rand(sol.rng, tree.generated[best_node])
-        o = pair.first
-        hao = pair.second
+        os = [el[1] for el in tree.generated[best_node]]
+        oi = findfirst([o] .== os)
+        if !isnothing(oi)
+            hao = tree.generated[best_node][oi].second
+        else
+            pair = rand(sol.rng, tree.generated[best_node])
+            o = pair.first
+            hao = pair.second
+        end
         push_weighted!(tree.sr_beliefs[hao], pomcp.node_sr_belief_updater, s, sp, r)
         sp, r = rand(sol.rng, tree.sr_beliefs[hao])
 
@@ -96,6 +102,7 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
         tree.v[best_node] += (R-tree.v[best_node])/tree.n[best_node]
     end
 
-    return R
+    best_node = select_best(MaxQ(), h_node, pomcp.solver.rng)
+    return tree.v[best_node]
 end
 
